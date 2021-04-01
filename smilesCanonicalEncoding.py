@@ -87,7 +87,7 @@ def getRingTraversals(joinedBranches, ringEdgesByStart, ringEdgesByEnd):
             traversal1.append(ringEdgesByStart[ring][traversal1[-1]])
             traversal2.append(ringEdgesByEnd[ring][traversal2[-1]])
         
-        minTraversals[ring] = min(traversal1,traversal2)
+        minTraversals[ring] = min(traversal1,traversal2) # FIX: After taking min, need to embed remaining branches from ringBranches when converting to string
     return minTraversals
 
 # Converts SMILES to canonical SMILES
