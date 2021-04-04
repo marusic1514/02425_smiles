@@ -3,8 +3,8 @@ import copy
 from collections import defaultdict
 
 def initializeRingData(m):
-    branchEdgesByStart = dict()
-    branchEdgesByEnd = dict()
+    branchEdgesByStart = defaultdict(list)
+    branchEdgesByEnd = defaultdict(list)
     ringEdges = set()
 
     for bond in m.GetBonds():
@@ -17,15 +17,22 @@ def initializeRingData(m):
         if bond.IsInRing():     
             ringEdges.add((start,end))           
         else:
-            branchEdgesByStart[start] = end
-            branchEdgesByEnd[end] = start
+            branchEdgesByStart[start].append(end)
+            branchEdgesByEnd[end].append(start)
 
     return branchEdgesByStart, branchEdgesByEnd, ringEdges
     
+def recursiveJoin():
+    pass
+
+# FIX: Need to backtrack for branches that diverge
+# branchEdgesByStart/End values are lists
 def getJoinedBranches(branchEdgesByStart,branchEdgesByEnd):
-    (s,e) = branchEdgesByStart.popitem()
-    del branchEdgesByEnd[e]
-    joinedBranches = [[s,e]]
+    (s,endList) = branchEdgesByStart.popitem()
+    for atom in endList:
+        del branchEdgesByEnd[atom]
+        #joinedBranches = recursiveJoin()
+
     while len(branchEdgesByStart) != 0:   
         start = joinedBranches[-1][0]
         end = joinedBranches[-1][-1]
@@ -66,7 +73,7 @@ def getRingTraversals(joinedBranches, ringEdgesByStart, ringEdgesByEnd):
     #FIX: NEED TO CHANGE ringLongestBranch FOR TIES 
     ringLongestBranch = defaultdict(list) # Values are longest branch ordered so the left most element is NOT in 
                                             # contact with the ring and the right most element IS in contact with ring
-    for branch in joinedBranches:
+    for branch in joinedBranches: #[1,2,3] "CCO", (1,3)
         for ring in ringVectors:
             if (branch[0] in ring):
                 branchRev = branch[::-1]
@@ -109,10 +116,12 @@ def encodeSMILES(s):
         joinedBranches, ringEdgesByStart, ringEdgesByEnd = getRingData(m, ringVectors)
         minRingTraversals = getRingTraversals(joinedBranches, ringEdgesByStart, ringEdgesByEnd)
 
-
+    else:
+        pass
+        # Output SMILES
 
 # x = input("Please enter a valid SMILES encoding of a molecule.")
-# encodeSMILES(xs)
+# encodeSMILES(x)
 cubane = 'C12C3C4C1C5C4C3C25'
 bicyclohexyl = 'C1CCCCC1C1CCCCC1'
 encodeSMILES(bicyclohexyl)
