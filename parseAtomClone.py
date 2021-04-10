@@ -13,13 +13,14 @@ class SuppressStr(StrMatch):
 def atomUnit():
     # Second option lists accepted atoms, can add more if necesary
     return [(SuppressStr('('), atomList, SuppressStr(')')),
-            (_(r'[BCHNOPS]'), Optional(_(r'\d*'))) ]
+            (Optional(['=','#']), _(r'[BCHNOPS]'), Optional(_(r'\d*'))) ]
 
 def atomList():
     return ZeroOrMore(atomUnit)
 
 def ring():
-    return SuppressStr(':'), atomUnit, atomList, SuppressStr(':')
+    return SuppressStr(':'), atomList, \
+        SuppressStr(':'), Optional(['=','#'])
 
 def fragment():
     return atomList, Optional(ring)
@@ -40,14 +41,25 @@ class AtomCloneVistor(PTNodeVisitor):
 
     def visit_fragment(self, node, children):
         d = dict()
-        d[node[0].rule_name] = children[0]
-        if len(children) == 2:
-            d[node[1].rule_name] = children[1]
+        for i in range(len(node)):
+            if node[i].rule_name == "atomList":
+                d[node[i].rule_name] = children[i]
+            elif node[i].rule_name == "ring":
+                d[node[i].rule_name], bond = children[i]
+                d["ringBond"] = bond
 
         return d
 
     def visit_ring(self, node, children):
-        return [children[0]] + children[1]
+        if len(children) == 0 or children[0] in ['=','#']:
+            return None
+        bond = 1
+        if len(children) == 2 and children[1] == '=':
+            bond = 2
+        elif len(children) == 2 and children[1] == '#':
+            bond = 3
+
+        return (children[0], bond)
 
     def visit_atomList(self, node, children):
         return list(children)
@@ -56,16 +68,29 @@ class AtomCloneVistor(PTNodeVisitor):
         # Parenthesized branch
         if node[0].rule_name == "atomList":
             return children[0]
+
+        noBondChildren = children
+        bond = 1
+        tag = None
+        if children[0] == '=':
+            bond = 2
+            noBondChildren = children[1:]
+        elif children[0] == '#':
+            bond = 3
+            noBondChildren = children[1:]
+
         # Atom and tag
-        elif len(children) == 2:
+        if len(noBondChildren) == 2:
             d= dict()
-            d["atom"] = children[0]
-            d["tag"] = int(children[1])
+            d["atom"] = noBondChildren[0]
+            d["tag"] = int(noBondChildren[1])
+            d["bond"] = bond
             return d
         # Atom without tag
         else:
             d= dict()
-            d["atom"] = children[0]
+            d["atom"] = noBondChildren[0]
+            d["bond"] = bond
             return d
 
 
@@ -91,7 +116,7 @@ def fragmentAdjacencyMatrix(fragment):
     numAtoms = 0
     ringStart = None
     labels = []
-    bonds1 = []
+    bonds = []
     tags = dict()
     fidxStack = [0]
     atomStack = [-1]
@@ -112,7 +137,7 @@ def fragmentAdjacencyMatrix(fragment):
                 fidxStack.pop()
                 # Check if finished with ring, add ring closing bond
                 if len(fidxStack) == 0 and struct == "ring":
-                    bonds1.append((ringStart, atomStack[0]))
+                    bonds.append((ringStart, atomStack[0], fragment["ringBond"]))
                 atomStack.pop()
                 if len(fidxStack) > 0:
                     fidxStack[-1] += 1
@@ -125,7 +150,7 @@ def fragmentAdjacencyMatrix(fragment):
                 assert (obj["tag"] not in tags), "Duplicate tag in same fragment"
                 tags[obj["tag"]] = numAtoms
 
-            bonds1.append((atomStack[-1],numAtoms))
+            bonds.append((atomStack[-1],numAtoms,obj["bond"]))
             fidxStack[-1] += 1
             atomStack[-1] = numAtoms
             numAtoms += 1
@@ -142,16 +167,16 @@ def fragmentAdjacencyMatrix(fragment):
             atomStack = [numAtoms-1]
 
     # Remove dummy starter bond
-    bonds1 = bonds1[1:]
+    bonds = bonds[1:]
 
     # Make adjacency matrix with all zeros
     mat = []
     for i in range(numAtoms):
         mat.append([0]*numAtoms)
 
-    for (i,j) in bonds1:
-        mat[i][j] = 1
-        mat[j][i] = 1
+    for (i,j, b) in bonds:
+        mat[i][j] = b
+        mat[j][i] = b
 
     return mat, labels, tags
 
