@@ -122,6 +122,6 @@ def encodeSMILES(s):
 
 # x = input("Please enter a valid SMILES encoding of a molecule.")
 # encodeSMILES(x)
-cubane = 'C12C3C4C1C5C4C3C25'
-bicyclohexyl = 'C1CCCCC1C1CCCCC1'
-encodeSMILES(bicyclohexyl)
+#cubane = 'C12C3C4C1C5C4C3C25'
+#bicyclohexyl = 'C1CCCCC1C1CCCCC1'
+#encodeSMILES(bicyclohexyl)

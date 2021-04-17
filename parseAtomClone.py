@@ -276,15 +276,14 @@ def printLabels(lab):
     for i,c in enumerate(lab):
         print(str(i)+" "+c)
 
-assert(len(sys.argv) == 2)
+# assert(len(sys.argv) == 2)
 
-initParser()
+# initParser()
 
-
-with open(sys.argv[1]) as f:
-    for line in f:
-        cleanLine = line.strip()
-        print("String: ", cleanLine)
-        matrix, lab = strToAdjacencyMatrix(cleanLine)
-        printMatrix(matrix)
-        printLabels(lab)
+# with open(sys.argv[1]) as f:
+#     for line in f:
+#         cleanLine = line.strip()
+#         print("String: ", cleanLine)
+#         matrix, lab = strToAdjacencyMatrix(cleanLine)
+#         printMatrix(matrix)
+#         printLabels(lab)
