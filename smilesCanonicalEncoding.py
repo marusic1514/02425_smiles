@@ -28,25 +28,24 @@ def initializeRingData(m):
 
 # creates individual string molecules from dictionary for each branch submolecule
 # creates a map to map each molecule back to the indices of the atoms in it
-# TODO: not incldue the atom if it is on the ring (check if an atom is attached to something else in the entire molecule)
-# TODO: MolFragmentToSmiles
-# 
+
 def moleculesFromBranches(allTrees,molecule,ringAtoms):
-    print(ringAtoms, "HERE")
     allTreeMolecules = dict()
     for tree in allTrees:
         atoms, bonds = tree
         for root in atoms:
-            a = []
-            b = []
-            for atom in atoms:
-                if atom == root or atom not in ringAtoms:
-                    a.append(atom)
-            for (x,y) in bonds:
-                if x == root or y == root:
-                    b.append(bond)
-                elif x not in ringAtoms or y not in ringAtoms:
-                    b.append(bond)
+        #     a = []
+        #     b = []
+        #     for atom in atoms:
+        #         if atom == root or atom not in ringAtoms:
+        #             a.append(atom)
+        #     for (x,y) in bonds:
+        #         if x == root or y == root:
+        #             b.append(bond)
+        #         elif x not in ringAtoms or y not in ringAtoms:
+        #             b.append(bond)
+            a = list(atoms)
+            b = list(bonds)
 
             m = Chem.MolFragmentToSmiles(molecule, atomsToUse=a, bondsToUse=b, rootedAtAtom=root)
             allTreeMolecules[root] = m[1:]
@@ -176,10 +175,9 @@ def getRingTraversals(m, branchesByRoot, ringEdgesByStart, ringEdgesByEnd):
         completeMolecule.append(allTraversals[0])
 
     completeMolecule.sort()
+    print(branchesByRoot)
     moleculeOrderings = [stringToRingOrder[mol] for mol in completeMolecule]
     result = ""
-    print(moleculeOrderings)
-    print(branchesByRoot)
     for j in range(len(moleculeOrderings)):
         traversal = moleculeOrderings[j]
         result = result + ":"
@@ -222,9 +220,9 @@ def encodeSMILES(s):
         allTreeBranches = getAllTreeBranches(branchEdgesByStartCopy,m)
         ringEdgesByStart, ringEdgesByEnd = getRingData(m, ringVectors, ringEdges)
         branchesByRoot = moleculesFromBranches(allTreeBranches, m, ringAtoms)
-        # which atoms were not in the ring and keep extending until you hit a ring atom; used up all the edges
         # ringEdgesByStart/End -- gives you the edges and their directions as dictionaries
-        minRingTraversals = getRingTraversals(m, branchesByRoot, ringEdgesByStart, ringEdgesByEnd)
+        result = getRingTraversals(m, branchesByRoot, ringEdgesByStart, ringEdgesByEnd)
+        return result
     else:
         return s
         # Output SMILES
@@ -238,4 +236,4 @@ if __name__ == "__main__":
     _3_propyl_4_isopropyl_1_heptene = 'C=CC(CCC)C(C(C)C)CCC'
     _3_ringed_multiple_branches = 'C1(C2=CC(F)=C(C=C2N(C2CC2)C=C1C(=O)O)N1CCNCC1)=O'
     _1_methyl_3_bromo_cyclohexene_1 = 'CC1=CC(CCC1)Br'
-    encodeSMILES(_1_methyl_3_bromo_cyclohexene_1)
+    encodeSMILES(bicyclohexyl)
