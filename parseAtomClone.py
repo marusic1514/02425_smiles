@@ -13,7 +13,7 @@ class SuppressStr(StrMatch):
 def atomUnit():
     # Second option lists accepted atoms, can add more if necesary
     return [(SuppressStr('('), atomList, SuppressStr(')')),
-            (Optional(['=','#']), _(r'[BCHNOPS]'), Optional(_(r'\d*'))) ]
+            (Optional(['=','#']), _(r'Br|Cl|[BCFHINOPS]'), Optional(_(r'\d*')))]
 
 def atomList():
     return ZeroOrMore(atomUnit)
@@ -23,7 +23,7 @@ def ring():
         SuppressStr(':'), Optional(['=','#'])
 
 def fragment():
-    return atomList, Optional(ring)
+    return [ring, atomList]
 
 def fragmentList():
     return fragment, ZeroOrMore(SuppressStr('-'),fragment), EOF
@@ -157,14 +157,8 @@ def fragmentAdjacencyMatrix(fragment):
         # Handle branch (atomList) by setting up parent atom for next bond
         elif isinstance(obj, list):
             fidxStack.append(0)
-            atomStack.append(numAtoms-1)
-
-        # Handle transition from main branch into ring
-        if len(fidxStack) == 0 and struct == "atomList" and "ring" in fragment:
-            struct = "ring"
-            ringStart = numAtoms
-            fidxStack = [0]
-            atomStack = [numAtoms-1]
+            # atomStack.append(numAtoms-1)
+            atomStack.append(atomStack[-1])
 
     # Remove dummy starter bond
     bonds = bonds[1:]
@@ -276,6 +270,12 @@ def printLabels(lab):
     for i,c in enumerate(lab):
         print(str(i)+" "+c)
 
+# initParser()
+# test = ":CC(Br)(C(N)C)N12N34:=-:CC(Cl)N12N34:"
+# mat,lab = strToAdjacencyMatrix(test)
+# print(test)
+# printMatrix(mat)
+# printLabels(lab)
 # assert(len(sys.argv) == 2)
 
 # initParser()
