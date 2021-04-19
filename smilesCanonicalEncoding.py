@@ -31,63 +31,47 @@ def initializeRingData(m):
 
 def moleculesFromBranches(allTrees,molecule,ringAtoms):
     allTreeMolecules = dict()
+    branchAtoms = []
     for tree in allTrees:
         atoms, bonds = tree
         for root in atoms:
-        #     a = []
-        #     b = []
-        #     for atom in atoms:
-        #         if atom == root or atom not in ringAtoms:
-        #             a.append(atom)
-        #     for (x,y) in bonds:
-        #         if x == root or y == root:
-        #             b.append(bond)
-        #         elif x not in ringAtoms or y not in ringAtoms:
-        #             b.append(bond)
             a = list(atoms)
             b = list(bonds)
+            branchAtoms.extend(a)
 
             m = Chem.MolFragmentToSmiles(molecule, atomsToUse=a, bondsToUse=b, rootedAtAtom=root)
-            allTreeMolecules[root] = m[1:]
-    #print(allTreeMolecules)
-    return allTreeMolecules
+            allTreeMolecules[root] = (m[1:],atoms)
+    return allTreeMolecules, set(branchAtoms)
 
 
-# FIX: Need to backtrack for branches that diverge
-# branchEdgesByStart/End values are lists
-
-# TODO: change the branches, such that the string is unique and also keep track of all the tree's endpoints
-# make sure it gives me smiles canonical strings
-# TODO: figure out which branch the bond belongs to
 # list of atoms in this branch; when you cant add anything else, then you know the branch is done
 # keep the list of atoms and the bonds and you pass the list of bonds to smiles and it does it for you
 # look at winsotn's implementation and the visitor thing to figure out whether I can use it here
 def getAllTreeBranches(branchEdgesByStart,m):
     # while there are still non-ring edges we have not used
     allTrees = []
-    allTreesPrintView = []
     while len(branchEdgesByStart) > 0:
-        thisTreeNodeAtoms = set() # a set to keep track of the nodes in the current tree
-        thisTreeNodeBonds = set()
+        thisTreeNodeAtoms = [] 
+        thisTreeNodeBonds = []
         # add the starting item for this tree:
         (s,neighbors) = branchEdgesByStart.popitem()
-        thisTreeNodeAtoms.add(s)
-        thisTreeNodeAtoms.union(set(neighbors))
-        thisTreeNodeBonds.union(set([(s,x) for x in neighbors]))
+        thisTreeNodeAtoms.append(s)
+        thisTreeNodeAtoms.extend(neighbors)
+        thisTreeNodeBonds.extend([m.GetBondBetweenAtoms(s,x).GetIdx() for x in neighbors])
         queue = set(copy.copy(neighbors)) # keep the elements in the queue that we wish to explore
         # keep adding all the edges that belong to this tree
         while (len(queue) > 0):
             elem = queue.pop()
             neibs = branchEdgesByStart[elem]
-            thisTreeNodeAtoms.add(elem)
-            thisTreeNodeAtoms.union(set(neibs))
-            thisTreeNodeBonds.union(set([(s,x) for x in neibs]))
+            thisTreeNodeAtoms.append(elem)
+            thisTreeNodeAtoms.extend(neibs)
+            thisTreeNodeBonds.extend([m.GetBondBetweenAtoms(elem,x).GetIdx() for x in neibs])
             # remove these edges from branchEdgesByStart
             del branchEdgesByStart[elem]
             for i in neibs:
                 if i not in thisTreeNodeAtoms:
                     queue.add(i)
-        allTrees.append((thisTreeNodeAtoms,thisTreeNodeBonds))
+        allTrees.append((set(thisTreeNodeAtoms),set(thisTreeNodeBonds)))
     # get all the molecular representations of the branches; allBranchMols is a list of tuples (u,v)
     # where u is the string representation of the branch and v is the list of atom indecies involved in that branch
     return allTrees
@@ -111,7 +95,7 @@ def getTraversalForStartingPoint(m, startingIndex, ring, ringEdges, branchesByRo
     traversal = ":"
     traversal = traversal + str(m.GetAtomWithIdx(currIndex).GetSymbol())
     if currIndex in branchesByRoot.keys():
-        traversal = traversal + "(" + branchesByRoot[currIndex] + ")"
+        traversal = traversal + "(" + branchesByRoot[currIndex][0] + ")"
     currIndex = ringEdges[currIndex]
     #print("all trees: ", allTrees)
     # iterate traverse the ring until you circle back around, finding all the branches incident
@@ -121,7 +105,7 @@ def getTraversalForStartingPoint(m, startingIndex, ring, ringEdges, branchesByRo
         order.append(currIndex)
         traversal = traversal + str(m.GetAtomWithIdx(currIndex).GetSymbol())
         if currIndex in branchesByRoot.keys():
-            traversal = traversal + "(" + branchesByRoot[currIndex] + ")"
+            traversal = traversal + "(" + branchesByRoot[currIndex][0] + ")"
         currIndex = ringEdges[currIndex]
     traversal = traversal + (":")
     return traversal, order
@@ -151,7 +135,7 @@ def getTraversalForStartingPoint(m, startingIndex, ring, ringEdges, branchesByRo
 #        ringEdgesByEnd -- maps a tuple representing atoms in a ring to a dictionary of the reversed edges
 #        mapIndxToAtomicNum -- maps the index of an atom in a molecule to the atomic number of that atom
 #        allTreeBranches -- maps branch index to the edges in it
-def getRingTraversals(m, branchesByRoot, ringEdgesByStart, ringEdgesByEnd):
+def getRingTraversals(m, branchesByRoot, ringEdgesByStart, ringEdgesByEnd, branchAtoms, treesByAtoms):
     completeMolecule = []
     stringToRingOrder = dict()
     ringVectors = ringEdgesByStart.keys()
@@ -175,8 +159,29 @@ def getRingTraversals(m, branchesByRoot, ringEdgesByStart, ringEdgesByEnd):
         completeMolecule.append(allTraversals[0])
 
     completeMolecule.sort()
-    print(branchesByRoot)
+    
     moleculeOrderings = [stringToRingOrder[mol] for mol in completeMolecule]
+
+    # since branches only appear once, there is redundance in overlapping rings and exposed endpoints of branches
+    sharedAtoms = []
+    seenAtoms = set()
+    for ring in ringVectors:
+        for r in ring:
+            if r in seenAtoms:
+                sharedAtoms.append(r)
+            else:
+                seenAtoms.add(r)
+
+    for atom in branchAtoms:
+        if atom in seenAtoms:
+            sharedAtoms.append(atom)
+
+    print(sharedAtoms)
+    print(treesByAtoms)
+    # once you use one atom in a branch, need to remove all other shared endpoints to avoid duplicate tagging
+
+    tagDict = dict() # atom index to tag
+
     result = ""
     for j in range(len(moleculeOrderings)):
         traversal = moleculeOrderings[j]
@@ -185,11 +190,13 @@ def getRingTraversals(m, branchesByRoot, ringEdgesByStart, ringEdgesByEnd):
             atomIdx = traversal[i]
             atom = m.GetAtomWithIdx(atomIdx).GetSymbol()
             result = result + atom
-            if i == len(traversal)-1:
-                result = result + ":"
+            #result = tagIfShared(result, atomIdx, sharedAtoms, tagDict, branch, treesByAtoms)
+                
             if atomIdx in branchesByRoot.keys():
-                result = result + "(" + branchesByRoot[atomIdx] + ")"
-                del branchesByRoot[atomIdx]
+                result = result + "(" + branchesByRoot[atomIdx][0] + ")"
+                for b in branchesByRoot[atomIdx][1]:
+                    del branchesByRoot[b]
+        result = result + ":"
         if j != len(moleculeOrderings)-1:
             result = result + "-"        
     print(result)
@@ -219,9 +226,10 @@ def encodeSMILES(s):
         branchEdgesByStartCopy = copy.copy(branchEdgesByStart) # make copy because getAllTreeBranches is destructive
         allTreeBranches = getAllTreeBranches(branchEdgesByStartCopy,m)
         ringEdgesByStart, ringEdgesByEnd = getRingData(m, ringVectors, ringEdges)
-        branchesByRoot = moleculesFromBranches(allTreeBranches, m, ringAtoms)
+        branchesByRoot, branchAtoms = moleculesFromBranches(allTreeBranches, m, ringAtoms)
+        treesByAtoms = [x[0] for x in allTreeBranches]
         # ringEdgesByStart/End -- gives you the edges and their directions as dictionaries
-        result = getRingTraversals(m, branchesByRoot, ringEdgesByStart, ringEdgesByEnd)
+        result = getRingTraversals(m, branchesByRoot, ringEdgesByStart, ringEdgesByEnd, branchAtoms, treesByAtoms)
         return result
     else:
         return s
