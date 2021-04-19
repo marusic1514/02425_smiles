@@ -2,35 +2,40 @@ from rdkit import Chem
 import copy
 from collections import defaultdict
 
-def initializeRingData(m):
-    branchEdgesByStart = defaultdict(list)
-    branchEdgesByEnd = defaultdict(list)
+def initializeRingData(m, ringAtoms):
+    branchEdgesAll = defaultdict(list)
 
     ringEdges = set()
 
     for bond in m.GetBonds():
         # This encoding does not support aromatic rings so request a new molecule.
+        # NOTE: I think this rejects aromatic molecules encoded with
+        # double/single bonds, so maybe should not do this check
         if str(bond.GetBondType()) == "AROMATIC":
             x = input("This molecule is aromatic. Please try again.\n")
             return encodeSMILES(x)
 
         start, end = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
         startAtomNum, endAtomNum = bond.GetBeginAtom().GetAtomicNum(), bond.GetEndAtom().GetAtomicNum()
-        
+
         # add this item to the map:
         if bond.IsInRing():
-            ringEdges.add((start,end))           
+            ringEdges.add((start,end))
         else:
-            branchEdgesByStart[start].append(end)
-            branchEdgesByEnd[end].append(start)
+            # Exclude mapping branch edges from ring atoms
+            # If included, may combine branches with same root into one branch
+            if end not in ringAtoms:
+                branchEdgesAll[end].append(start)
+            if start not in ringAtoms:
+                branchEdgesAll[start].append(end)
 
-    return branchEdgesByStart, branchEdgesByEnd, ringEdges
+    return ringEdges, branchEdgesAll
 
 # creates individual string molecules from dictionary for each branch submolecule
 # creates a map to map each molecule back to the indices of the atoms in it
 
 def moleculesFromBranches(allTrees,molecule,ringAtoms):
-    allTreeMolecules = dict()
+    allTreeMolecules = defaultdict(list)
     branchAtoms = []
     for tree in allTrees:
         atoms, bonds = tree
@@ -40,21 +45,21 @@ def moleculesFromBranches(allTrees,molecule,ringAtoms):
             branchAtoms.extend(a)
 
             m = Chem.MolFragmentToSmiles(molecule, atomsToUse=a, bondsToUse=b, rootedAtAtom=root)
-            allTreeMolecules[root] = (m[1:],atoms)
+            allTreeMolecules[root].append((m[1:],atoms))
     return allTreeMolecules, set(branchAtoms)
 
 
 # list of atoms in this branch; when you cant add anything else, then you know the branch is done
 # keep the list of atoms and the bonds and you pass the list of bonds to smiles and it does it for you
 # look at winsotn's implementation and the visitor thing to figure out whether I can use it here
-def getAllTreeBranches(branchEdgesByStart,m):
+def getAllTreeBranches(branchEdgesAll, ringAtoms, m):
     # while there are still non-ring edges we have not used
     allTrees = []
-    while len(branchEdgesByStart) > 0:
-        thisTreeNodeAtoms = [] 
+    while len(branchEdgesAll) > 0:
+        thisTreeNodeAtoms = []
         thisTreeNodeBonds = []
         # add the starting item for this tree:
-        (s,neighbors) = branchEdgesByStart.popitem()
+        (s,neighbors) = branchEdgesAll.popitem()
         thisTreeNodeAtoms.append(s)
         thisTreeNodeAtoms.extend(neighbors)
         thisTreeNodeBonds.extend([m.GetBondBetweenAtoms(s,x).GetIdx() for x in neighbors])
@@ -62,15 +67,16 @@ def getAllTreeBranches(branchEdgesByStart,m):
         # keep adding all the edges that belong to this tree
         while (len(queue) > 0):
             elem = queue.pop()
-            neibs = branchEdgesByStart[elem]
+            neibs = branchEdgesAll[elem]
             thisTreeNodeAtoms.append(elem)
-            thisTreeNodeAtoms.extend(neibs)
             thisTreeNodeBonds.extend([m.GetBondBetweenAtoms(elem,x).GetIdx() for x in neibs])
             # remove these edges from branchEdgesByStart
-            del branchEdgesByStart[elem]
+            del branchEdgesAll[elem]
             for i in neibs:
-                if i not in thisTreeNodeAtoms:
+                if i not in thisTreeNodeAtoms and i not in ringAtoms:
                     queue.add(i)
+            # Moved after check to add to queue
+            thisTreeNodeAtoms.extend(neibs)
         allTrees.append((set(thisTreeNodeAtoms),set(thisTreeNodeBonds)))
     # get all the molecular representations of the branches; allBranchMols is a list of tuples (u,v)
     # where u is the string representation of the branch and v is the list of atom indecies involved in that branch
@@ -79,12 +85,31 @@ def getAllTreeBranches(branchEdgesByStart,m):
 def getRingData(m, ringVectors, ringEdges):
     ringEdgesByStart = defaultdict(dict)
     ringEdgesByEnd = defaultdict(dict)
-    while len(ringEdges) != 0:
-        (s,e) = ringEdges.pop()
-        for ring in ringVectors:
-            if s in ring:
-                ringEdgesByStart[ring][s] = e
-                ringEdgesByEnd[ring][e] = s             
+
+    # All ring edges implied by rings in ringVectors
+    for ring in ringVectors:
+        for i in range(len(ring)):
+            s = ring[i]
+            e = ring[(i+1) % len(ring)]
+            ringEdgesByStart[ring][s] = e
+            ringEdgesByEnd[ring][e] = s
+            ringEdges.difference_update([(s,e),(e,s)])
+
+    # All edges should be found by processing ringVectors
+    assert(len(ringEdges) == 0)
+
+    # OLD IMPLEMENTATION
+    # while len(ringEdges) != 0:
+    #     # NOTE: direction of edges may not be consistent around ring
+    #     (s,e) = ringEdges.pop()
+    #     for ring in ringVectors:
+    #         if s in ring and e in ring:
+    #             ringEdgesByStart[ring][s] = e
+    #             ringEdgesByEnd[ring][e] = s
+    #     if s in [0,1,6,7] and e in [0,1,6,7]:
+    #         print(s,e)
+    #         print("END: ",ringEdgesByEnd)
+    #         print("START: ",ringEdgesByStart)
     return ringEdgesByStart, ringEdgesByEnd
 
 
@@ -95,32 +120,59 @@ def getTraversalForStartingPoint(m, startingIndex, ring, ringEdges, branchesByRo
     traversal = ":"
     traversal = traversal + str(m.GetAtomWithIdx(currIndex).GetSymbol())
     if currIndex in branchesByRoot.keys():
-        traversal = traversal + "(" + branchesByRoot[currIndex][0] + ")"
+        branchStrs = []
+        for b,_ in branchesByRoot[currIndex]:
+            branchStrs.append(b)
+        branchStrs.sort()
+        for b in branchStrs:
+            traversal = traversal + "(" + b + ")"
     currIndex = ringEdges[currIndex]
     #print("all trees: ", allTrees)
     # iterate traverse the ring until you circle back around, finding all the branches incident
     # on that point in the ring adding each one in parenths, and then add the atom itself
     #print(traversal, currIndex)
+    prevIndex = currIndex
     while (currIndex != startingIndex):
+        bond = ""
+        if prevIndex != currIndex:
+            bondType = m.GetBondBetweenAtoms(prevIndex, currIndex).GetBondType()
+            if bondType == Chem.BondType.DOUBLE:
+                bond = "="
+            elif bondType == Chem.BondType.TRIPLE:
+                bond = "#"
         order.append(currIndex)
-        traversal = traversal + str(m.GetAtomWithIdx(currIndex).GetSymbol())
+        traversal = traversal + bond + str(m.GetAtomWithIdx(currIndex).GetSymbol())
         if currIndex in branchesByRoot.keys():
-            traversal = traversal + "(" + branchesByRoot[currIndex][0] + ")"
+            branchStrs = []
+            for b,_ in branchesByRoot[currIndex]:
+                branchStrs.append(b)
+            branchStrs.sort()
+            for b in branchStrs:
+                traversal = traversal + "(" + b + ")"
+        prevIndex = currIndex
         currIndex = ringEdges[currIndex]
     traversal = traversal + (":")
+    bond = ""
+    bondType = m.GetBondBetweenAtoms(prevIndex, startingIndex).GetBondType()
+    if bondType == Chem.BondType.DOUBLE:
+        bond = "="
+    elif bondType == Chem.BondType.TRIPLE:
+        bond = "#"
+    traversal = traversal + bond
+
     return traversal, order
     #print("getTraversalForStartingPoint all molecules", allMolecules)
-    
+
 
 # creates the ordering of the rings by attaching all the relevant branches to each ring (allows for branch reusal)
 # keeps track of the best traversal (the one that is lexicographically shortest)
 # To do so, it tries each possible starting point on the ring and each one of the two rotations (clockwise and coutnerclockwise)
 # CREATING INITIAL RING REPRESENTATIONS:
 # O: ordering of rings and the traversal + starting point for each ring + map from fragment id to list of rings it belongs to
-# for each ring: <------- gives the best representation for each ring 
+# for each ring: <------- gives the best representation for each ring
 #   for each start:
 #    for each direction:
-#       ":" 
+#       ":"
 #        for each point on the ring traversal, add the point, for each fragment rooted at that point (dont forget ot remove th point itself), create all the fragments and attach them in lexicographic order, each in separate parenths
 #        (map the fragment to the list of rings it is attached to -- branch to list of rings mapping)
 #        (keep track of the traversal order)
@@ -145,9 +197,9 @@ def getRingTraversals(m, branchesByRoot, ringEdgesByStart, ringEdgesByEnd, branc
         for startingIndex in ring:
             # try forward direction:
             ringTraversalForward,atomOrderingF = getTraversalForStartingPoint(m, startingIndex, ring, ringEdgesByStart[ring], branchesByRoot)
-            # try reverse direction: 
+            # try reverse direction:
             ringTraversalReversed,atomOrderingR = getTraversalForStartingPoint(m, startingIndex, ring, ringEdgesByEnd[ring], branchesByRoot)
-            
+
             allTraversals.append(ringTraversalForward)
             allTraversals.append(ringTraversalReversed)
             traversalToOrder[ringTraversalForward] = atomOrderingF
@@ -159,7 +211,7 @@ def getRingTraversals(m, branchesByRoot, ringEdgesByStart, ringEdgesByEnd, branc
         completeMolecule.append(allTraversals[0])
 
     completeMolecule.sort()
-    
+
     moleculeOrderings = [stringToRingOrder[mol] for mol in completeMolecule]
 
     # since branches only appear once, there is redundance in overlapping rings and exposed endpoints of branches
@@ -186,20 +238,46 @@ def getRingTraversals(m, branchesByRoot, ringEdgesByStart, ringEdgesByEnd, branc
     for j in range(len(moleculeOrderings)):
         traversal = moleculeOrderings[j]
         result = result + ":"
+        prevIdx = traversal[0]
         for i in range(len(traversal)):
             atomIdx = traversal[i]
+            bond = ""
+            if prevIdx != atomIdx:
+                bondType = m.GetBondBetweenAtoms(prevIdx, atomIdx).GetBondType()
+                if bondType == Chem.BondType.DOUBLE:
+                    bond = "="
+                elif bondType == Chem.BondType.TRIPLE:
+                    bond = "#"
+
             atom = m.GetAtomWithIdx(atomIdx).GetSymbol()
-            result = result + atom
+            result = result + bond + atom
             #result = tagIfShared(result, atomIdx, sharedAtoms, tagDict, branch, treesByAtoms)
-                
+
             if atomIdx in branchesByRoot.keys():
-                result = result + "(" + branchesByRoot[atomIdx][0] + ")"
-                for b in branchesByRoot[atomIdx][1]:
-                    del branchesByRoot[b]
-        result = result + ":"
+                branchStrs = []
+                branchAlists = []
+                for b,alist in branchesByRoot[atomIdx]:
+                    branchStrs.append(b)
+                    branchAlists.append(alist)
+                branchStrs.sort()
+                for b in branchStrs:
+                    result = result + "(" + b + ")"
+
+                for alist in branchAlists:
+                    for a in alist:
+                        if a in branchesByRoot:
+                            del branchesByRoot[a]
+            prevIdx = atomIdx
+        bond = ""
+        bondType = m.GetBondBetweenAtoms(prevIdx, traversal[0]).GetBondType()
+        if bondType == Chem.BondType.DOUBLE:
+            bond = "="
+        elif bondType == Chem.BondType.TRIPLE:
+            bond = "#"
+
+        result = result + ":" + bond
         if j != len(moleculeOrderings)-1:
-            result = result + "-"        
-    print(result)
+            result = result + "-"
     return result
 
 # Converts SMILES to canonical SMILES
@@ -208,23 +286,22 @@ def encodeSMILES(s):
     # Asks for input again if molecule not valid SMILES
     if m == None:
         x = input("Please try again.\n")
-        return encodeSMILES(x)              
-    
+        return encodeSMILES(x)
+
     ri = m.GetRingInfo()
     n = ri.NumRings()
 
-    # If there are any rings in structure, we need to perform encoding so 
+    # If there are any rings in structure, we need to perform encoding so
     # molecule can be parsed using context-free grammar.
     if n > 0:
         ringVectors = ri.AtomRings() # atoms on the ring
-        print(ringVectors)
         ringAtoms = set()
         for ring in ringVectors:
             for r in ring:
                 ringAtoms.add(r)
-        branchEdgesByStart, branchEdgesByEnd, ringEdges = initializeRingData(m)
-        branchEdgesByStartCopy = copy.copy(branchEdgesByStart) # make copy because getAllTreeBranches is destructive
-        allTreeBranches = getAllTreeBranches(branchEdgesByStartCopy,m)
+
+        ringEdges, branchEdgesAll = initializeRingData(m, ringAtoms)
+        allTreeBranches = getAllTreeBranches(branchEdgesAll, ringAtoms, m)
         ringEdgesByStart, ringEdgesByEnd = getRingData(m, ringVectors, ringEdges)
         branchesByRoot, branchAtoms = moleculesFromBranches(allTreeBranches, m, ringAtoms)
         treesByAtoms = [x[0] for x in allTreeBranches]
@@ -241,7 +318,12 @@ if __name__ == "__main__":
     cubane = 'C12C3C4C1C5C4C3C25'
     bicyclohexyl = 'C1CCCCC1C1CCCCC1'
     cyclohexane = 'C1CCCCC1'
-    _3_propyl_4_isopropyl_1_heptene = 'C=CC(CCC)C(C(C)C)CCC'
+    #Changed into cycle to test branch code
+    _3_propyl_4_isopropyl_1_heptene = 'C1=CC(CCC)C(C(=C)C)CCC1'
+    testMultBranchSameRoot1 = 'C1=CC(CCC)(C(=C)C)CCC1'
+    testMultBonds1 = 'C1=C=C=C=C=C=C=1'
     _3_ringed_multiple_branches = 'C1(C2=CC(F)=C(C=C2N(C2CC2)C=C1C(=O)O)N1CCNCC1)=O'
     _1_methyl_3_bromo_cyclohexene_1 = 'CC1=CC(CCC1)Br'
-    encodeSMILES(bicyclohexyl)
+    testCurr = testMultBranchSameRoot1
+    print(testCurr)
+    print(encodeSMILES(testCurr))
