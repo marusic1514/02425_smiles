@@ -24,9 +24,11 @@ def initializeRingData(m, ringAtoms):
         else:
             # Exclude mapping branch edges from ring atoms
             # If included, may combine branches with same root into one branch
-            if end not in ringAtoms:
+            if end not in ringAtoms or\
+                    (end in ringAtoms and start in ringAtoms):
                 branchEdgesAll[end].append(start)
-            if start not in ringAtoms:
+            if start not in ringAtoms or\
+                    (end in ringAtoms and start in ringAtoms):
                 branchEdgesAll[start].append(end)
 
     return ringEdges, branchEdgesAll
@@ -37,15 +39,24 @@ def initializeRingData(m, ringAtoms):
 def moleculesFromBranches(allTrees,molecule,ringAtoms):
     allTreeMolecules = defaultdict(list)
     branchAtoms = []
+    idxSyms = []
+    for i in range(molecule.GetNumAtoms()):
+        idxSyms.append(molecule.GetAtomWithIdx(i).GetSymbol() + str(i))
+    print(idxSyms)
     for tree in allTrees:
         atoms, bonds = tree
         for root in atoms:
             a = list(atoms)
             b = list(bonds)
             branchAtoms.extend(a)
-
-            m = Chem.MolFragmentToSmiles(molecule, atomsToUse=a, bondsToUse=b, rootedAtAtom=root)
-            allTreeMolecules[root].append((m[1:],atoms))
+            m = Chem.MolFragmentToSmiles(molecule, atomsToUse=a, bondsToUse=b,
+                    rootedAtAtom=root, atomSymbols=idxSyms)
+            mstr = Chem.MolFragmentToSmiles(molecule, atomsToUse=a, bondsToUse=b,
+                    rootedAtAtom=root)
+            i = 1
+            while not m[i].isalpha():
+                i += 1
+            allTreeMolecules[root].append((m[i:],atoms, mstr[1:]))
     return allTreeMolecules, set(branchAtoms)
 
 
@@ -121,7 +132,7 @@ def getTraversalForStartingPoint(m, startingIndex, ring, ringEdges, branchesByRo
     traversal = traversal + str(m.GetAtomWithIdx(currIndex).GetSymbol())
     if currIndex in branchesByRoot.keys():
         branchStrs = []
-        for b,_ in branchesByRoot[currIndex]:
+        for _,_,b in branchesByRoot[currIndex]:
             branchStrs.append(b)
         branchStrs.sort()
         for b in branchStrs:
@@ -144,7 +155,7 @@ def getTraversalForStartingPoint(m, startingIndex, ring, ringEdges, branchesByRo
         traversal = traversal + bond + str(m.GetAtomWithIdx(currIndex).GetSymbol())
         if currIndex in branchesByRoot.keys():
             branchStrs = []
-            for b,_ in branchesByRoot[currIndex]:
+            for _,_,b in branchesByRoot[currIndex]:
                 branchStrs.append(b)
             branchStrs.sort()
             for b in branchStrs:
@@ -187,7 +198,7 @@ def getTraversalForStartingPoint(m, startingIndex, ring, ringEdges, branchesByRo
 #        ringEdgesByEnd -- maps a tuple representing atoms in a ring to a dictionary of the reversed edges
 #        mapIndxToAtomicNum -- maps the index of an atom in a molecule to the atomic number of that atom
 #        allTreeBranches -- maps branch index to the edges in it
-def getRingTraversals(m, branchesByRoot, ringEdgesByStart, ringEdgesByEnd, branchAtoms, treesByAtoms):
+def getRingTraversals(m, branchesByRoot, ringEdgesByStart, ringEdgesByEnd):
     completeMolecule = []
     stringToRingOrder = dict()
     ringVectors = ringEdgesByStart.keys()
@@ -200,40 +211,42 @@ def getRingTraversals(m, branchesByRoot, ringEdgesByStart, ringEdgesByEnd, branc
             # try reverse direction:
             ringTraversalReversed,atomOrderingR = getTraversalForStartingPoint(m, startingIndex, ring, ringEdgesByEnd[ring], branchesByRoot)
 
-            allTraversals.append(ringTraversalForward)
-            allTraversals.append(ringTraversalReversed)
-            traversalToOrder[ringTraversalForward] = atomOrderingF
-            traversalToOrder[ringTraversalReversed] = atomOrderingR
+            allTraversals.append((ringTraversalForward,ring))
+            allTraversals.append((ringTraversalReversed, ring))
+            traversalToOrder[(ringTraversalForward, ring)] = atomOrderingF
+            traversalToOrder[(ringTraversalReversed, ring)] = atomOrderingR
 
-        allTraversals.sort()
+        allTraversals.sort(key=lambda t: t[0])
         minTraversal = allTraversals[0]
         stringToRingOrder[minTraversal] = traversalToOrder[minTraversal]
         completeMolecule.append(allTraversals[0])
 
-    completeMolecule.sort()
+    completeMolecule.sort(key=lambda t: t[0])
+    print(completeMolecule)
 
     moleculeOrderings = [stringToRingOrder[mol] for mol in completeMolecule]
 
     # since branches only appear once, there is redundance in overlapping rings and exposed endpoints of branches
-    sharedAtoms = []
-    seenAtoms = set()
-    for ring in ringVectors:
-        for r in ring:
-            if r in seenAtoms:
-                sharedAtoms.append(r)
-            else:
-                seenAtoms.add(r)
+    # sharedAtoms = []
+    # seenAtoms = set()
+    # for ring in ringVectors:
+    #     for r in ring:
+    #         if r in seenAtoms:
+    #             sharedAtoms.append(r)
+    #         else:
+    #             seenAtoms.add(r)
 
-    for atom in branchAtoms:
-        if atom in seenAtoms:
-            sharedAtoms.append(atom)
+    # for atom in branchAtoms:
+    #     if atom in seenAtoms:
+    #         sharedAtoms.append(atom)
 
-    print(sharedAtoms)
-    print(treesByAtoms)
     # once you use one atom in a branch, need to remove all other shared endpoints to avoid duplicate tagging
 
     tagDict = dict() # atom index to tag
+    freqDict = defaultdict(lambda: 0)
+    idxOrder = []
 
+    # Initial string, with indices as tags for everything
     result = ""
     for j in range(len(moleculeOrderings)):
         traversal = moleculeOrderings[j]
@@ -241,6 +254,8 @@ def getRingTraversals(m, branchesByRoot, ringEdgesByStart, ringEdgesByEnd, branc
         prevIdx = traversal[0]
         for i in range(len(traversal)):
             atomIdx = traversal[i]
+            idxOrder.append(atomIdx)
+            freqDict[atomIdx] += 1
             bond = ""
             if prevIdx != atomIdx:
                 bondType = m.GetBondBetweenAtoms(prevIdx, atomIdx).GetBondType()
@@ -250,18 +265,37 @@ def getRingTraversals(m, branchesByRoot, ringEdgesByStart, ringEdgesByEnd, branc
                     bond = "#"
 
             atom = m.GetAtomWithIdx(atomIdx).GetSymbol()
-            result = result + bond + atom
+            result = result + bond + atom + str(atomIdx)
             #result = tagIfShared(result, atomIdx, sharedAtoms, tagDict, branch, treesByAtoms)
 
             if atomIdx in branchesByRoot.keys():
                 branchStrs = []
                 branchAlists = []
-                for b,alist in branchesByRoot[atomIdx]:
+                for b,alist,_ in branchesByRoot[atomIdx]:
                     branchStrs.append(b)
                     branchAlists.append(alist)
                 branchStrs.sort()
                 for b in branchStrs:
                     result = result + "(" + b + ")"
+                    i = 0
+                    idxStr = ""
+                    while i < len(b):
+                        if b[i].isalpha() and i > 0:
+                            idx = int(idxStr)
+                            idxOrder.append(idx)
+                            freqDict[idx] += 1
+                            idxStr = ""
+                        elif b[i].isdigit():
+                            idxStr += b[i]
+
+                        i += 1
+                    if len(idxStr) > 0:
+                        idx = int(idxStr)
+                        idxOrder.append(idx)
+                        freqDict[idx] += 1
+                        idxStr = ""
+
+
 
                 for alist in branchAlists:
                     for a in alist:
@@ -278,7 +312,37 @@ def getRingTraversals(m, branchesByRoot, ringEdgesByStart, ringEdgesByEnd, branc
         result = result + ":" + bond
         if j != len(moleculeOrderings)-1:
             result = result + "-"
-    return result
+
+    print(result)
+    curTag = 0
+    for idx in idxOrder:
+        if freqDict[idx] > 1 and idx not in tagDict:
+            tagDict[idx] = curTag
+            curTag += 1
+    print(tagDict)
+    minTagResult = ""
+    idxStr = ""
+    i = 0
+    while i < len(result):
+        if result[i].isdigit():
+            idxStr += result[i]
+        else:
+            if len(idxStr) > 0:
+                idx = int(idxStr)
+                if idx in tagDict:
+                    minTagResult += str(tagDict[idx])
+                idxStr = ""
+            minTagResult += result[i]
+
+        i += 1
+    if len(idxStr) > 0:
+        idx = int(idxStr)
+        if idx in tagDict:
+            minTagResult += str(tagDict[idx])
+        idxStr = ""
+
+
+    return minTagResult
 
 # Converts SMILES to canonical SMILES
 def encodeSMILES(s):
@@ -304,9 +368,8 @@ def encodeSMILES(s):
         allTreeBranches = getAllTreeBranches(branchEdgesAll, ringAtoms, m)
         ringEdgesByStart, ringEdgesByEnd = getRingData(m, ringVectors, ringEdges)
         branchesByRoot, branchAtoms = moleculesFromBranches(allTreeBranches, m, ringAtoms)
-        treesByAtoms = [x[0] for x in allTreeBranches]
         # ringEdgesByStart/End -- gives you the edges and their directions as dictionaries
-        result = getRingTraversals(m, branchesByRoot, ringEdgesByStart, ringEdgesByEnd, branchAtoms, treesByAtoms)
+        result = getRingTraversals(m, branchesByRoot, ringEdgesByStart, ringEdgesByEnd)
         return result
     else:
         return s
@@ -324,6 +387,8 @@ if __name__ == "__main__":
     testMultBonds1 = 'C1=C=C=C=C=C=C=1'
     _3_ringed_multiple_branches = 'C1(C2=CC(F)=C(C=C2N(C2CC2)C=C1C(=O)O)N1CCNCC1)=O'
     _1_methyl_3_bromo_cyclohexene_1 = 'CC1=CC(CCC1)Br'
-    testCurr = testMultBranchSameRoot1
+    testSymHack1 = 'C1OSN1CCCCCC1PSN1'
+    testSymHack2 = 'C1CCC1C1CCC1'
+    testCurr = cubane
     print(testCurr)
     print(encodeSMILES(testCurr))
