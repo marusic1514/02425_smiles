@@ -240,6 +240,7 @@ def strToAdjacencyMatrix(s):
     returns:
     adjacency matrix as list of lists, label matrix as list of strings
     """
+    initParser()
     tree = parser.parse(s)
     listForm = visit_parse_tree(tree, AtomCloneVistor())
     currFragment = fragmentAdjacencyMatrix(listForm[0])
@@ -270,13 +271,13 @@ def printLabels(lab):
     for i,c in enumerate(lab):
         print(str(i)+" "+c)
 
-# initParser()
-# test = ":CC(Br)(C(N)C)N12N34:=-:CC(Cl)N12N34:"
-# mat,lab = strToAdjacencyMatrix(test)
-# print(test)
-# printMatrix(mat)
-# printLabels(lab)
-# assert(len(sys.argv) == 2)
+initParser()
+test = ":C(C)C(C)C0C1S:-:C(CNC2)CCCO:-:C2C0C1NCN:"
+mat,lab = strToAdjacencyMatrix(test)
+print(test)
+printMatrix(mat)
+printLabels(lab)
+#assert(len(sys.argv) == 2)
 
 # initParser()
 

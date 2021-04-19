@@ -32,6 +32,9 @@ def molFromMatrix(node_list, adjacency_matrix):
             elif bond == 2:
                 bond_type = Chem.rdchem.BondType.DOUBLE
                 mol.AddBond(node_to_idx[ix], node_to_idx[iy], bond_type)
+            elif bond == 3:
+                bond_type = Chem.rdchem.BondType.TRIPLE
+                mol.AddBond(node_to_idx[ix], node_to_idx[iy], bond_type)
 
     # Convert RWMol to Mol object
     mol = mol.GetMol()            
@@ -49,22 +52,31 @@ the matrices and molecule in rdkit are identical.
 '''
 def test(f):
     tests = open(f, "r").read().splitlines()
+    count = 1
+    correct = 0
     for molecule in tests:
+        print(f"Testing {molecule} on line {count}...")
         smilesMol = Chem.MolFromSmiles(molecule) 
 
         encodedSmiles = encodeSMILES(molecule)
-        matrix, labels = strToAdjacencyMatrix(enodedSmiles)
+        print("   ", encodedSmiles)
+        matrix, labels = strToAdjacencyMatrix(encodedSmiles)
         encodedSmilesMol = molFromMatrix(labels, matrix)
 
         s1 = Chem.MolToSmiles(smilesMol)
         s2 = Chem.MolToSmiles(encodedSmilesMol) 
+        print("   ", s1, "vs", s2)
 
-        print(f"Testing {molecule}...",end="")
+        
         if (s1 == s2): # Relies on rdkit's canonical SMILES to check equality
             print("Passed")
+            correct += 1
         else:
             print("Failed")
+        count += 1
+    
+    print(f"Passed {correct}/{count}")
 
-test("tests.txt")
+test("pcbaClean.txt")
 
 

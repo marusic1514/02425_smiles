@@ -42,7 +42,8 @@ def moleculesFromBranches(allTrees,molecule,ringAtoms):
     idxSyms = []
     for i in range(molecule.GetNumAtoms()):
         idxSyms.append(molecule.GetAtomWithIdx(i).GetSymbol() + str(i))
-    print(idxSyms)
+    #print(idxSyms)
+    #print(allTrees)
     for tree in allTrees:
         atoms, bonds = tree
         for root in atoms:
@@ -51,12 +52,15 @@ def moleculesFromBranches(allTrees,molecule,ringAtoms):
             branchAtoms.extend(a)
             m = Chem.MolFragmentToSmiles(molecule, atomsToUse=a, bondsToUse=b,
                     rootedAtAtom=root, atomSymbols=idxSyms)
+            #print(m)
             mstr = Chem.MolFragmentToSmiles(molecule, atomsToUse=a, bondsToUse=b,
                     rootedAtAtom=root)
+            #print(mstr)
             i = 1
-            while not m[i].isalpha():
+            while m[i].isdigit():
                 i += 1
             allTreeMolecules[root].append((m[i:],atoms, mstr[1:]))
+    #print(allTreeMolecules)
     return allTreeMolecules, set(branchAtoms)
 
 
@@ -222,7 +226,7 @@ def getRingTraversals(m, branchesByRoot, ringEdgesByStart, ringEdgesByEnd):
         completeMolecule.append(allTraversals[0])
 
     completeMolecule.sort(key=lambda t: t[0])
-    print(completeMolecule)
+    #print(completeMolecule)
 
     moleculeOrderings = [stringToRingOrder[mol] for mol in completeMolecule]
 
@@ -280,7 +284,7 @@ def getRingTraversals(m, branchesByRoot, ringEdgesByStart, ringEdgesByEnd):
                     i = 0
                     idxStr = ""
                     while i < len(b):
-                        if b[i].isalpha() and i > 0:
+                        if b[i].isalpha() and len(idxStr) > 0:
                             idx = int(idxStr)
                             idxOrder.append(idx)
                             freqDict[idx] += 1
@@ -390,5 +394,5 @@ if __name__ == "__main__":
     testSymHack1 = 'C1OSN1CCCCCC1PSN1'
     testSymHack2 = 'C1CCC1C1CCC1'
     testCurr = cubane
-    print(testCurr)
-    print(encodeSMILES(testCurr))
+    #print(testCurr)
+    print(encodeSMILES("CC1SC2NCNC(NCC3CCCO3)C2C1C"))
