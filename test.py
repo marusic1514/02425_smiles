@@ -37,17 +37,17 @@ def molFromMatrix(node_list, adjacency_matrix):
                 mol.AddBond(node_to_idx[ix], node_to_idx[iy], bond_type)
 
     # Convert RWMol to Mol object
-    mol = mol.GetMol()            
+    mol = mol.GetMol()
 
     return mol
 
 '''
-Tests both the parser and canonical encoding for correctness. 
+Tests both the parser and canonical encoding for correctness.
 Input: File of input strings in SMILES form
 Output: Number of tests passed
 
-Converts SMILES to rdkit molecule and compares that to SMILES that has been 
-encoded to canonical SMILES and then parsed to an adjacency matrix. Passes if 
+Converts SMILES to rdkit molecule and compares that to SMILES that has been
+encoded to canonical SMILES and then parsed to an adjacency matrix. Passes if
 the matrices and molecule in rdkit are identical.
 '''
 def test(f):
@@ -55,27 +55,36 @@ def test(f):
     count = 1
     correct = 0
     for molecule in tests:
-        print(f"Testing {molecule} on line {count}...")
-        smilesMol = Chem.MolFromSmiles(molecule) 
+        # print(f"Testing {molecule} on line {count}...")
+        smilesMol = Chem.MolFromSmiles(molecule)
+        aromatic = False
+        for bond in smilesMol.GetBonds():
+            if bond.GetBondType() == Chem.BondType.AROMATIC:
+                aromatic = True
+        if aromatic:
+            continue
 
         encodedSmiles = encodeSMILES(molecule)
-        print("   ", encodedSmiles)
+        # print("   ", encodedSmiles)
         matrix, labels = strToAdjacencyMatrix(encodedSmiles)
         encodedSmilesMol = molFromMatrix(labels, matrix)
 
         s1 = Chem.MolToSmiles(smilesMol)
-        s2 = Chem.MolToSmiles(encodedSmilesMol) 
-        print("   ", s1, "vs", s2)
+        s2 = Chem.MolToSmiles(encodedSmilesMol)
+        # print("   ", s1, "vs", s2)
 
-        
+
         if (s1 == s2): # Relies on rdkit's canonical SMILES to check equality
-            print("Passed")
+            print(f"Passed Line {count}")
             correct += 1
         else:
+            print(f"Testing {molecule} on line {count}...")
+            print("   ", encodedSmiles)
+            print("   ", s1, "vs", s2)
             print("Failed")
         count += 1
-    
-    print(f"Passed {correct}/{count}")
+
+        print(f"Passed {correct}/{count}")
 
 test("pcbaClean.txt")
 

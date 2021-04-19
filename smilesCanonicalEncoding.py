@@ -317,13 +317,13 @@ def getRingTraversals(m, branchesByRoot, ringEdgesByStart, ringEdgesByEnd):
         if j != len(moleculeOrderings)-1:
             result = result + "-"
 
-    print(result)
+    # print(result)
     curTag = 0
     for idx in idxOrder:
         if freqDict[idx] > 1 and idx not in tagDict:
             tagDict[idx] = curTag
             curTag += 1
-    print(tagDict)
+    # print(tagDict)
     minTagResult = ""
     idxStr = ""
     i = 0

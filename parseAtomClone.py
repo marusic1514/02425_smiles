@@ -147,7 +147,7 @@ def fragmentAdjacencyMatrix(fragment):
         if isinstance(obj, dict):
             labels.append(obj["atom"])
             if "tag" in obj:
-                assert (obj["tag"] not in tags), "Duplicate tag in same fragment"
+                # assert (obj["tag"] not in tags), "Duplicate tag in same fragment"
                 tags[obj["tag"]] = numAtoms
 
             bonds.append((atomStack[-1],numAtoms,obj["bond"]))
@@ -211,8 +211,14 @@ def mergeFragments(a, b):
             idxB[i] = currIdx
             newLab.append(labB[i])
             currIdx += 1
-
+    for k in tagB.keys():
+        tagB[k] = idxB[tagB[k]]
     newTag = {**tagB, **tagA}
+    # print("mergeStart")
+    # print(tagA)
+    # print(tagB)
+    # print(newTag)
+    # print(idxB)
     newMat = []
     for i in range(newNumAtom):
         newMat.append([0]*newNumAtom)
@@ -271,12 +277,12 @@ def printLabels(lab):
     for i,c in enumerate(lab):
         print(str(i)+" "+c)
 
-initParser()
-test = ":C(C)C(C)C0C1S:-:C(CNC2)CCCO:-:C2C0C1NCN:"
-mat,lab = strToAdjacencyMatrix(test)
-print(test)
-printMatrix(mat)
-printLabels(lab)
+# initParser()
+# test = ":C(C)C(C)C0C1S:-:C(CNC2)CCCO:-:C2C0C1NCN:"
+# mat,lab = strToAdjacencyMatrix(test)
+# print(test)
+# printMatrix(mat)
+# printLabels(lab)
 #assert(len(sys.argv) == 2)
 
 # initParser()
