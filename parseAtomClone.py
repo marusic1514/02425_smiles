@@ -214,11 +214,7 @@ def mergeFragments(a, b):
     for k in tagB.keys():
         tagB[k] = idxB[tagB[k]]
     newTag = {**tagB, **tagA}
-    # print("mergeStart")
-    # print(tagA)
-    # print(tagB)
-    # print(newTag)
-    # print(idxB)
+
     newMat = []
     for i in range(newNumAtom):
         newMat.append([0]*newNumAtom)

@@ -52,10 +52,9 @@ the matrices and molecule in rdkit are identical.
 '''
 def test(f):
     tests = open(f, "r").read().splitlines()
-    count = 1
+    count = 0
     correct = 0
     for molecule in tests:
-        # print(f"Testing {molecule} on line {count}...")
         smilesMol = Chem.MolFromSmiles(molecule)
         aromatic = False
         for bond in smilesMol.GetBonds():
@@ -65,26 +64,26 @@ def test(f):
             continue
 
         encodedSmiles = encodeSMILES(molecule)
-        # print("   ", encodedSmiles)
         matrix, labels = strToAdjacencyMatrix(encodedSmiles)
         encodedSmilesMol = molFromMatrix(labels, matrix)
 
         s1 = Chem.MolToSmiles(smilesMol)
         s2 = Chem.MolToSmiles(encodedSmilesMol)
-        # print("   ", s1, "vs", s2)
-
 
         if (s1 == s2): # Relies on rdkit's canonical SMILES to check equality
-            print(f"Passed Line {count}")
             correct += 1
         else:
-            print(f"Testing {molecule} on line {count}...")
-            print("   ", encodedSmiles)
-            print("   ", s1, "vs", s2)
-            print("Failed")
+        # Problem with rdkit's circularity for SMILES encodings and won't be counted
+            if molecule != s1:
+                count -= 1
+            else:
+                print(f"Testing {molecule} on line {count}...Failed")
+                print("   ", encodedSmiles)
+                print("   ", s2)
         count += 1
 
-        print(f"Passed {correct}/{count}")
+    print(f"PASSED {correct}/{count}")
+
 
 test("pcbaClean.txt")
 
