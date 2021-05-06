@@ -39,13 +39,12 @@ def initializeRingData(m, ringAtoms):
                     (end in ringAtoms and start in ringAtoms):
                 branchEdgesAll[start].append(end)
 
-    #print(branchEdgesAll)
     return ringEdges, branchEdgesAll
 
 
 '''
 Goal
-    Using DFS, find all connected components in the branch edges to get trees.
+    Find all connected components in the branch edges to get trees.
 
 Input 
     branchEdgesAll- dictionary mapping atom to all its incident branch edges 
@@ -57,11 +56,9 @@ Output:
               (labeled by index ID set by rdkit)
 '''
 def getAllTreeBranches(branchEdgesAll, ringAtoms, m):
-    #print(ringAtoms)
     # while there are still non-ring edges we have not used
     allTrees = []
     while len(branchEdgesAll) > 0:
-        #print(branchEdgesAll)
         thisTreeNodeAtoms = []
         thisTreeNodeBonds = []
         queue = set()
@@ -70,7 +67,6 @@ def getAllTreeBranches(branchEdgesAll, ringAtoms, m):
         thisTreeNodeAtoms.append(s)
         thisTreeNodeAtoms.extend(neighbors)
         thisTreeNodeBonds.extend([m.GetBondBetweenAtoms(s,x).GetIdx() for x in neighbors])
-        #print("N", neighbors)
         for i in neighbors:
             if i in branchEdgesAll.keys() and s in branchEdgesAll[i]:
                 branchEdgesAll[i].remove(s)
@@ -78,11 +74,8 @@ def getAllTreeBranches(branchEdgesAll, ringAtoms, m):
                     del branchEdgesAll[i]
             if i not in ringAtoms:
                 queue.add(i) # keep the elements in the queue that we wish to explore
-        #queue = set(copy.copy(neighbors))
         # keep adding all the edges that belong to this tree
-        #print("T", thisTreeNodeAtoms)
         while (len(queue) > 0):
-            #print("Q", queue)
             elem = queue.pop()
             neibs = branchEdgesAll[elem]
             thisTreeNodeAtoms.append(elem)
@@ -94,11 +87,9 @@ def getAllTreeBranches(branchEdgesAll, ringAtoms, m):
                     queue.add(i)
             # Moved after check to add to queue
             thisTreeNodeAtoms.extend(neibs)
-        #print("   T'", thisTreeNodeAtoms)
         tree = (set(thisTreeNodeAtoms),set(thisTreeNodeBonds))
         if tree not in allTrees:
             allTrees.append(tree)
-    #print(allTrees)
     return allTrees
 
 
@@ -416,7 +407,7 @@ def encodeSMILES(s):
         # Separate ring edges from branch edges 
         ringEdges, branchEdgesAll = initializeRingData(m, ringAtoms)
 
-        # Use DFS to extend tree branches, getting distinct connected components
+        # Extend tree branches, getting distinct connected components
         allTreeBranches = getAllTreeBranches(branchEdgesAll, ringAtoms, m)
 
         # Create 2 ring edge dictionaries the 2 traversal directions 
